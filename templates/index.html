@@ -1,0 +1,209 @@
+<!-- Project: file_manager -->
+<!-- File Path: file_manager/templates/index.html -->
+<!-- Last Updated: 2025-08-08 07:45:00 -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Manager</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/theme/material-darker.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div id="app-container">
+        <div class="file-manager-container">
+            <header class="fm-header">
+                <div class="header-top">
+                    <h1><i class="fas fa-folder-tree"></i> File Manager</h1>
+                    <div class="logo-container">
+                        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" onerror="this.style.display='none'">
+                    </div>
+                </div>
+                <div class="breadcrumb" id="breadcrumb"></div>
+                <div class="toolbar-main">
+                    <div class="toolbar">
+                        <button id="btn-new-folder"><i class="fas fa-folder-plus"></i> New Folder</button>
+                        <button id="btn-new-file"><i class="fas fa-file-alt"></i> New File</button>
+                        <button id="btn-upload"><i class="fas fa-upload"></i> Upload</button>
+                        <input type="file" id="file-upload-input" style="display: none;" multiple>
+                    </div>
+                    <div class="search-and-view">
+                        <div class="search-container">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="search-input" placeholder="Search files...">
+                        </div>
+                        <div class="view-toggle">
+                            <button id="btn-list-view" class="active" title="List View"><i class="fas fa-list"></i></button>
+                            <button id="btn-grid-view" title="Grid View"><i class="fas fa-th"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+            <div class="fm-main-content">
+                <main class="fm-body">
+                    <div class="file-list-header">
+                        <div class="col-check"><input type="checkbox" id="select-all-checkbox"></div>
+                        <div class="col-name sortable" data-sort="name">Name <i class="fas fa-sort"></i></div>
+                        <div class="col-type">Type</div>
+                        <div class="col-perms">Permissions</div>
+                        <div class="col-modified sortable" data-sort="last_modified">Last Modified <i class="fas fa-sort"></i></div>
+                        <div class="col-size sortable" data-sort="size">Size <i class="fas fa-sort"></i></div>
+                    </div>
+                    <div class="loader-container" id="loader"><div class="spinner"></div></div>
+                    <ul class="file-list" id="file-list"></ul>
+                    <div id="empty-folder-message" class="empty-folder-message">
+                        <i class="fas fa-folder-open"></i>
+                        <h2>This folder is empty</h2>
+                        <p>Drag and drop files here to upload</p>
+                    </div>
+                </main>
+                <aside id="preview-panel" class="preview-panel">
+                    <div id="preview-placeholder" class="preview-placeholder">
+                        <i class="fas fa-eye"></i>
+                        <p>Select a file to preview</p>
+                    </div>
+                    <div id="preview-content" class="preview-content">
+                        <div id="preview-header">
+                            <h3 id="preview-name"></h3>
+                            <button id="preview-close-btn" class="close-button">&times;</button>
+                        </div>
+                        <div id="preview-visual"></div>
+                        <div id="preview-details"></div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Action Bar -->
+    <div id="floating-action-bar" class="floating-action-bar">
+        <span id="selection-count"></span>
+        <button id="btn-compress-selected" title="Compress Selected"><i class="fas fa-file-archive"></i> Compress</button>
+        <button id="btn-copy-selected" title="Copy Selected"><i class="fas fa-copy"></i> Copy</button>
+        <button id="btn-move-selected" title="Move Selected"><i class="fas fa-arrow-right-to-bracket"></i> Move</button>
+        <button id="btn-delete-selected" class="danger" title="Delete Selected"><i class="fas fa-trash"></i> Delete</button>
+    </div>
+
+    <!-- Modals -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content small">
+            <div class="modal-header"><h2 id="confirm-modal-title">Are you sure?</h2></div>
+            <div class="modal-body"><p id="confirm-modal-text"></p></div>
+            <div class="modal-footer">
+                <button id="confirm-modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="confirm-modal-ok" class="btn btn-danger">Confirm</button>
+            </div>
+        </div>
+    </div>
+    <div id="input-modal" class="modal">
+        <div class="modal-content small">
+            <div class="modal-header"><h2 id="input-modal-title">Enter Name</h2><span class="close-button" id="input-modal-close">&times;</span></div>
+            <div class="modal-body"><input type="text" id="input-modal-text" class="modal-input"></div>
+            <div class="modal-footer">
+                <button id="input-modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="input-modal-ok" class="btn btn-primary">OK</button>
+            </div>
+        </div>
+    </div>
+    <div id="image-modal" class="modal image-viewer">
+        <span class="close-button" id="image-modal-close">&times;</span>
+        <img class="modal-content" id="image-modal-src">
+        <div id="image-modal-caption"></div>
+    </div>
+    <div id="editor-modal" class="modal">
+        <div class="modal-content wide">
+            <div class="modal-header"><h2 id="editor-modal-title">Edit File</h2><span class="close-button" id="editor-modal-close">&times;</span></div>
+            <div class="modal-body"><textarea id="editor-modal-textarea"></textarea></div>
+            <div class="modal-footer">
+                <button id="editor-modal-save" class="btn btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+    <div id="permissions-modal" class="modal">
+        <div class="modal-content small">
+            <div class="modal-header"><h2 id="permissions-modal-title">Set Permissions</h2><span class="close-button" id="permissions-modal-close">&times;</span></div>
+            <div class="modal-body">
+                <p>Enter new permissions in octal format (e.g., 755).</p>
+                <input type="text" id="permissions-modal-input" class="modal-input" maxlength="3" pattern="[0-7]{3}">
+            </div>
+            <div class="modal-footer">
+                <button id="permissions-modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="permissions-modal-ok" class="btn btn-primary">Set</button>
+            </div>
+        </div>
+    </div>
+    <div id="move-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header"><h2 id="move-modal-title">Move Items</h2><span class="close-button" id="move-modal-close">&times;</span></div>
+            <div class="modal-body">
+                <p>Select a destination folder:</p>
+                <div class="tree-container" id="move-modal-tree"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="move-modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="move-modal-ok" class="btn btn-primary">Confirm</button>
+            </div>
+        </div>
+    </div>
+    <div id="unsaved-modal" class="modal">
+        <div class="modal-content small">
+            <div class="modal-header"><h2 id="unsaved-modal-title"><i class="fas fa-exclamation-triangle"></i> Unsaved Changes</h2></div>
+            <div class="modal-body"><p id="unsaved-modal-text">You have unsaved changes. Do you want to save them before closing?</p></div>
+            <div class="modal-footer">
+                <button id="unsaved-modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="unsaved-modal-discard" class="btn btn-danger">Don't Save</button>
+                <button id="unsaved-modal-save" class="btn btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="pdf-modal" class="modal">
+        <div class="modal-content wide pdf-viewer">
+            <div class="modal-header">
+                <h2 id="pdf-modal-title">PDF Viewer</h2>
+                <span class="close-button" id="pdf-modal-close">&times;</span>
+            </div>
+            <div class="modal-body pdf-body">
+                <canvas id="pdf-canvas"></canvas>
+            </div>
+            <div class="modal-footer pdf-footer">
+                <button id="pdf-prev" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Previous</button>
+                <span id="pdf-page-info"></span>
+                <button id="pdf-next" class="btn btn-secondary">Next <i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="media-modal" class="modal">
+        <div class="modal-content media-viewer">
+             <div class="modal-header">
+                <h2 id="media-modal-title">Media Player</h2>
+                <span class="close-button" id="media-modal-close">&times;</span>
+            </div>
+            <div class="modal-body" id="media-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Drag & Drop Overlay -->
+    <div id="drag-overlay" class="drag-overlay">
+        <div class="drag-overlay-content">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <h2>Drop files to upload</h2>
+        </div>
+    </div>
+
+    <div id="context-menu" class="context-menu"></div>
+    <div id="toast-container"></div>
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/mode/meta.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+    
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
