@@ -1,0 +1,17 @@
+services:
+  filemanager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: filemanager_project
+    ports:
+      - "5001:5002"
+    volumes:
+      - /home/ubuntu:/files
+    restart: unless-stopped
+    networks:
+      - filemanager_network
+
+networks:
+  filemanager_network:
+    driver: bridge

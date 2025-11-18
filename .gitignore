@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.log
+
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# PHP
+vendor/
+*.log
+
+# Docker
+*.tar
+*.tar.gz
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.sqlite
+*.db
+*.sql
+*.dump
+
+# Large files
+*.h5
+*.pkl
+*.model
+*.weights
+*.bin
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+logs/
+*.log
+temp/
+tmp/
+
+# Uploads
+uploads/
+static/uploads/
+public/uploads/
+storage/

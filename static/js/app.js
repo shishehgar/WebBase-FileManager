@@ -27,14 +27,41 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnMoveSelected = document.getElementById('btn-move-selected');
     const btnDeleteSelected = document.getElementById('btn-delete-selected');
     const btnCompressSelected = document.getElementById('btn-compress-selected');
+    const btnInvertSelection = document.getElementById('btn-invert-selection');
     const btnListView = document.getElementById('btn-list-view');
     const btnGridView = document.getElementById('btn-grid-view');
+
+    // Upload Progress Elements
+    const uploadProgressModal = { el: document.getElementById('upload-progress-modal'), bar: document.getElementById('upload-progress-bar'), text: document.getElementById('upload-progress-text') };
+
+    // Operation Progress Modal Elements
+    const operationProgressModal = {
+        el: document.getElementById('operation-progress-modal'),
+        title: document.getElementById('operation-modal-title'),
+        sourceFolder: document.getElementById('operation-source-folder'),
+        targetFolder: document.getElementById('operation-target-folder'),
+        itemCount: document.getElementById('operation-item-count'),
+        progressBar: document.getElementById('operation-progress-bar'),
+        progressText: document.getElementById('operation-progress-text'),
+        currentItem: document.getElementById('operation-current-item'),
+        detailsToggle: document.getElementById('operation-details-toggle'),
+        detailsList: document.getElementById('operation-details-list'),
+        itemsList: document.getElementById('operation-items-list'),
+        cancelBtn: document.getElementById('operation-cancel-btn'),
+        closeBtn: document.getElementById('operation-modal-close')
+    };
+
+    // Editor Enhancement Elements
+    const editorLineWrapToggle = document.getElementById('editor-line-wrap-toggle');
+    const editorFindToggle = document.getElementById('editor-find-toggle');
+    const editorFileSize = document.getElementById('editor-file-size');
+    const editorLineCount = document.getElementById('editor-line-count');
 
     // --- Modals ---
     const confirmModal = { el: document.getElementById('confirm-modal'), title: document.getElementById('confirm-modal-title'), text: document.getElementById('confirm-modal-text'), okBtn: document.getElementById('confirm-modal-ok'), cancelBtn: document.getElementById('confirm-modal-cancel') };
     const inputModal = { el: document.getElementById('input-modal'), title: document.getElementById('input-modal-title'), input: document.getElementById('input-modal-text'), okBtn: document.getElementById('input-modal-ok'), cancelBtn: document.getElementById('input-modal-cancel'), closeBtn: document.getElementById('input-modal-close') };
     const imageModal = { el: document.getElementById('image-modal'), img: document.getElementById('image-modal-src'), caption: document.getElementById('image-modal-caption'), closeBtn: document.getElementById('image-modal-close') };
-    const editorModal = { el: document.getElementById('editor-modal'), title: document.getElementById('editor-modal-title'), textarea: document.getElementById('editor-modal-textarea'), closeBtn: document.getElementById('editor-modal-close'), saveBtn: document.getElementById('editor-modal-save') };
+    const editorModal = { el: document.getElementById('editor-modal'), title: document.getElementById('editor-modal-title'), textarea: document.getElementById('editor-modal-textarea'), closeBtn: document.getElementById('editor-modal-close'), saveBtn: document.getElementById('editor-modal-save'), saveCloseBtn: document.getElementById('editor-modal-save-close') };
     const permissionsModal = { el: document.getElementById('permissions-modal'), title: document.getElementById('permissions-modal-title'), input: document.getElementById('permissions-modal-input'), okBtn: document.getElementById('permissions-modal-ok'), cancelBtn: document.getElementById('permissions-modal-cancel'), closeBtn: document.getElementById('permissions-modal-close') };
     const moveModal = { el: document.getElementById('move-modal'), title: document.getElementById('move-modal-title'), tree: document.getElementById('move-modal-tree'), okBtn: document.getElementById('move-modal-ok'), cancelBtn: document.getElementById('move-modal-cancel'), closeBtn: document.getElementById('move-modal-close') };
     const unsavedModal = { el: document.getElementById('unsaved-modal'), saveBtn: document.getElementById('unsaved-modal-save'), discardBtn: document.getElementById('unsaved-modal-discard'), cancelBtn: document.getElementById('unsaved-modal-cancel') };
@@ -48,10 +75,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let editorHasUnsavedChanges = false;
     let originalEditorContent = '';
     let currentFilePathInEditor = '';
-    let allFiles = []; 
+    let allFiles = [];
     let currentSort = { key: 'name', order: 'asc' };
     let currentView = 'list';
     let focusedItemIndex = -1;
+    let isMultiSelectMode = false; // Track if we're in multi-select mode
+    let lastClickedIndex = -1; // Track last clicked item for range selection
+    let operationCancelled = false; // Track if operation should be cancelled
 
     // --- Utility Functions ---
     function showToast(message, type = 'success') {
@@ -87,18 +117,29 @@ document.addEventListener('DOMContentLoaded', () => {
             inputModal.input.value = '';
             inputModal.input.placeholder = initialValue;
             inputModal.el.style.display = 'flex';
-            inputModal.input.focus();
+            
+            // Auto-focus the input field
+            setTimeout(() => inputModal.input.focus(), 100);
+            
             const onOk = () => { cleanup(); resolve(inputModal.input.value); };
             const onCancel = () => { cleanup(); resolve(null); };
+            const onEnter = (e) => { 
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onOk(); 
+                }
+            };
             const cleanup = () => {
                 inputModal.el.style.display = 'none';
                 inputModal.okBtn.removeEventListener('click', onOk);
                 inputModal.cancelBtn.removeEventListener('click', onCancel);
                 inputModal.closeBtn.removeEventListener('click', onCancel);
+                inputModal.input.removeEventListener('keydown', onEnter);
             };
             inputModal.okBtn.addEventListener('click', onOk);
             inputModal.cancelBtn.addEventListener('click', onCancel);
             inputModal.closeBtn.addEventListener('click', onCancel);
+            inputModal.input.addEventListener('keydown', onEnter);
         });
     }
 
@@ -178,6 +219,31 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderBreadcrumb() {
         breadcrumbEl.innerHTML = '';
         const parts = currentPath.split('/').filter(p => p);
+        const fullPath = currentPath || '/';
+
+        // Add copy path button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn-copy-path';
+        copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
+        copyBtn.title = 'Copy current path';
+        copyBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                await navigator.clipboard.writeText(fullPath);
+                showToast('Path copied to clipboard!');
+            } catch (err) {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = fullPath;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showToast('Path copied to clipboard!');
+            }
+        });
+        breadcrumbEl.appendChild(copyBtn);
+
         const rootLink = document.createElement('a');
         rootLink.href = '#';
         rootLink.innerText = 'Root';
@@ -260,17 +326,49 @@ document.addEventListener('DOMContentLoaded', () => {
         li.dataset.path = fullPath;
         let iconClass = item.type === 'dir' ? 'fas fa-folder' : getIconForFile(item.name);
         li.innerHTML = `
-            <div class="col-check"><input type="checkbox" class="file-item-checkbox" data-path="${fullPath}"></div>
+            <div class="col-check"><input type="checkbox" class="file-item-checkbox" data-path="${fullPath}" style="display: none;"></div>
             <div class="col-name"><i class="${iconClass}"></i><span>${item.name}</span></div>
             <div class="col-type">${item.file_type_str}</div>
             <div class="col-perms">${item.permissions}</div>
             <div class="col-modified">${formatTimestamp(item.last_modified)}</div>
             <div class="col-size">${item.type === 'file' ? formatBytes(item.size) : ''}</div>
         `;
-        li.addEventListener('click', (e) => { 
+        li.addEventListener('click', (e) => {
             if (e.target.type !== 'checkbox') {
-                setFocus(index);
-                updatePreviewPanel(item);
+                // Handle Shift+Click for range selection
+                if (e.shiftKey && lastClickedIndex !== -1) {
+                    e.preventDefault();
+                    isMultiSelectMode = true;
+                    const start = Math.min(lastClickedIndex, index);
+                    const end = Math.max(lastClickedIndex, index);
+
+                    // Select all items in range
+                    for (let i = start; i <= end; i++) {
+                        const itemPath = `${currentPath}/${allFiles[i].name}`.replace(/^\//, '');
+                        selectedItems.add(itemPath);
+                    }
+                    updateSelectionUI();
+                }
+                // Handle Ctrl+Click for multi-select
+                else if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    isMultiSelectMode = true;
+                    lastClickedIndex = index;
+                    const checkbox = li.querySelector('.file-item-checkbox');
+                    checkbox.checked = !checkbox.checked;
+                    if (checkbox.checked) {
+                        selectedItems.add(fullPath);
+                        li.classList.add('selected-item');
+                    } else {
+                        selectedItems.delete(fullPath);
+                        li.classList.remove('selected-item');
+                    }
+                    updateSelectionUI();
+                } else {
+                    lastClickedIndex = index;
+                    setFocus(index);
+                    updatePreviewPanel(item);
+                }
             }
         });
         li.addEventListener('dblclick', (e) => { if (e.target.type !== 'checkbox') handleItemClick(item); });
@@ -304,18 +402,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateSelectionUI() {
         const count = selectedItems.size;
+        const showCheckboxes = count > 0 || isMultiSelectMode;
+
         document.querySelectorAll('.file-item-checkbox').forEach(cb => {
             cb.checked = selectedItems.has(cb.dataset.path);
+            cb.style.display = showCheckboxes ? 'inline-block' : 'none';
+
+            // Add fade-in animation for checkboxes
+            if (showCheckboxes && cb.style.display !== 'none') {
+                cb.classList.add('checkbox-fade-in');
+            } else {
+                cb.classList.remove('checkbox-fade-in');
+            }
         });
+
+        // Add visual highlight to selected items
+        document.querySelectorAll('.file-item').forEach(item => {
+            const itemPath = item.dataset.path;
+            if (selectedItems.has(itemPath)) {
+                item.classList.add('selected-item');
+            } else {
+                item.classList.remove('selected-item');
+            }
+        });
+
         if (count > 0) {
             selectionCount.textContent = `${count} item(s) selected`;
             floatingActionBar.classList.add('visible');
         } else {
             floatingActionBar.classList.remove('visible');
+            isMultiSelectMode = false; // Exit multi-select mode when no items selected
         }
         const totalCheckboxes = document.querySelectorAll('.file-item-checkbox').length;
         selectAllCheckbox.checked = count > 0 && count === totalCheckboxes;
         selectAllCheckbox.indeterminate = count > 0 && count < totalCheckboxes;
+        selectAllCheckbox.style.display = showCheckboxes ? 'inline-block' : 'none';
     }
 
     async function saveEditorChanges() {
@@ -357,10 +478,15 @@ document.addEventListener('DOMContentLoaded', () => {
             codeEditor = CodeMirror.fromTextArea(editorModal.textarea, {
                 lineNumbers: true,
                 theme: 'material-darker',
-                mode: 'text/plain'
+                mode: 'text/plain',
+                lineWrapping: false,
+                extraKeys: {
+                    "Ctrl-F": "findPersistent",
+                    "Cmd-F": "findPersistent"
+                }
             });
         }
-        
+
         const modeInfo = CodeMirror.findModeByFileName(fileName);
         if (modeInfo) {
             const mode = modeInfo.mode;
@@ -389,15 +515,35 @@ document.addEventListener('DOMContentLoaded', () => {
             codeEditor.setValue(data.content);
             originalEditorContent = data.content;
             editorHasUnsavedChanges = false;
+
+            // Update editor info
+            updateEditorInfo(data.content);
+
             codeEditor.off('change');
             codeEditor.on('change', () => {
                 editorHasUnsavedChanges = codeEditor.getValue() !== originalEditorContent;
+                updateEditorInfo(codeEditor.getValue());
             });
         } catch(e) {
             codeEditor.setValue(`// Error loading file: ${e.message}`);
         }
-        
+
         editorModal.saveBtn.onclick = saveEditorChanges;
+        editorModal.saveCloseBtn.onclick = async () => {
+            if (await saveEditorChanges()) {
+                editorHasUnsavedChanges = false;
+                editorModal.el.style.display = 'none';
+            }
+        };
+    }
+
+    function updateEditorInfo(content) {
+        const lines = content.split('\n').length;
+        const sizeInBytes = new Blob([content]).size;
+        const sizeInKB = (sizeInBytes / 1024).toFixed(2);
+
+        editorLineCount.textContent = `Lines: ${lines}`;
+        editorFileSize.textContent = `Size: ${sizeInKB} KB`;
     }
 
     function handleItemClick(item) {
@@ -482,16 +628,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function deleteItems(itemsToDelete) {
         const confirm = await showConfirm('Delete Items?', `Are you sure you want to delete ${itemsToDelete.length} item(s)? This cannot be undone.`, 'danger');
         if (confirm) {
-            try {
-                const response = await apiCall('/api/delete', {
-                    method: 'POST',
-                    body: JSON.stringify({ items: itemsToDelete })
-                });
-                if(response.success) {
-                    showToast(response.message);
-                    loadFiles(currentPath);
-                }
-            } catch (e) { /* apiCall shows toast */ }
+            await performBatchOperation('delete', itemsToDelete, null);
         }
     }
 
@@ -553,6 +690,12 @@ document.addEventListener('DOMContentLoaded', () => {
         permissionsModal.input.value = currentPerms;
         permissionsModal.el.style.display = 'flex';
         
+        // Auto-focus the input field
+        setTimeout(() => {
+            permissionsModal.input.focus();
+            permissionsModal.input.select();
+        }, 100);
+        
         const onOk = async () => {
             const newPerms = permissionsModal.input.value;
             if (newPerms.match(/^[0-7]{3}$/)) {
@@ -570,16 +713,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         const onCancel = () => cleanup();
+        const onEnter = (e) => { 
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                onOk(); 
+            }
+        };
         const cleanup = () => {
             permissionsModal.el.style.display = 'none';
             permissionsModal.okBtn.removeEventListener('click', onOk);
             permissionsModal.cancelBtn.removeEventListener('click', onCancel);
             permissionsModal.closeBtn.removeEventListener('click', onCancel);
+            permissionsModal.input.removeEventListener('keydown', onEnter);
         };
 
         permissionsModal.okBtn.addEventListener('click', onOk);
         permissionsModal.cancelBtn.addEventListener('click', onCancel);
         permissionsModal.closeBtn.addEventListener('click', onCancel);
+        permissionsModal.input.addEventListener('keydown', onEnter);
     }
 
     async function openMoveCopyModal(action) {
@@ -588,8 +739,8 @@ document.addEventListener('DOMContentLoaded', () => {
         moveModal.el.style.display = 'flex';
 
         let selectedPath = null;
-        
-        function renderTree(nodes, container) {
+
+        function renderTree(nodes) {
             const ul = document.createElement('ul');
             nodes.forEach(node => {
                 const li = document.createElement('li');
@@ -629,18 +780,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('Please select a destination folder.', 'error');
                 return;
             }
-            try {
-                await apiCall(`/api/${action}`, {
-                    method: 'POST',
-                    body: JSON.stringify({ items: [...selectedItems], destination: selectedPath })
-                });
-                showToast(`Items ${action}ed successfully.`);
-                loadFiles(currentPath);
-                cleanup();
-            } catch (e) { /* apiCall shows toast */ }
+            
+            // Close the folder selection modal
+            moveModal.el.style.display = 'none';
+            
+            // Start the live batch operation
+            await performBatchOperation(action, [...selectedItems], selectedPath);
         };
 
         const onCancel = () => cleanup();
+        
         const cleanup = () => {
             moveModal.el.style.display = 'none';
             moveModal.okBtn.removeEventListener('click', onOk);
@@ -653,9 +802,122 @@ document.addEventListener('DOMContentLoaded', () => {
         moveModal.closeBtn.addEventListener('click', onCancel);
     }
 
+    async function performBatchOperation(action, items, destination) {
+        operationCancelled = false;
+        
+        // Setup operation modal
+        const actionTitle = action === 'move' ? 'Moving' : action === 'copy' ? 'Copying' : 'Deleting';
+        operationProgressModal.title.textContent = `${actionTitle} Items...`;
+        operationProgressModal.sourceFolder.textContent = currentPath || '/';
+        operationProgressModal.targetFolder.textContent = destination || '/';
+        operationProgressModal.itemCount.textContent = `${items.length} item(s)`;
+        operationProgressModal.progressBar.style.width = '0%';
+        operationProgressModal.progressText.textContent = `0 of ${items.length} items processed`;
+        operationProgressModal.currentItem.querySelector('span').textContent = 'Preparing...';
+        operationProgressModal.detailsList.style.display = 'none';
+        operationProgressModal.detailsToggle.classList.remove('expanded');
+        operationProgressModal.detailsToggle.innerHTML = '<i class="fas fa-chevron-down"></i> Show Details';
+        
+        // Populate items list
+        operationProgressModal.itemsList.innerHTML = '';
+        items.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = 'pending';
+            li.dataset.index = index;
+            const itemName = item.split('/').pop();
+            li.innerHTML = `
+                <i class="fas fa-circle"></i>
+                <span>${itemName}</span>
+                <span class="item-status">Pending</span>
+            `;
+            operationProgressModal.itemsList.appendChild(li);
+        });
+        
+        // Show modal
+        operationProgressModal.el.style.display = 'flex';
+        
+        let processedCount = 0;
+        let successCount = 0;
+        let errorCount = 0;
+        
+        // Process items one by one
+        for (let i = 0; i < items.length; i++) {
+            if (operationCancelled) {
+                showToast(`Operation cancelled. ${successCount} of ${items.length} items processed.`, 'warning');
+                break;
+            }
+            
+            const item = items[i];
+            const itemName = item.split('/').pop();
+            const itemLi = operationProgressModal.itemsList.querySelector(`li[data-index="${i}"]`);
+            
+            // Update current item
+            operationProgressModal.currentItem.querySelector('span').textContent = itemName;
+            
+            // Mark as processing
+            itemLi.className = 'processing';
+            itemLi.querySelector('.item-status').textContent = 'Processing...';
+            itemLi.querySelector('i').className = 'fas fa-spinner fa-spin';
+            
+            try {
+                if (action === 'delete') {
+                    await apiCall('/api/delete', {
+                        method: 'POST',
+                        body: JSON.stringify({ items: [item] })
+                    });
+                } else {
+                    await apiCall(`/api/${action}`, {
+                        method: 'POST',
+                        body: JSON.stringify({ items: [item], destination: destination })
+                    });
+                }
+                
+                // Mark as completed
+                itemLi.className = 'completed';
+                itemLi.querySelector('.item-status').textContent = '✓ Complete';
+                itemLi.querySelector('i').className = 'fas fa-check-circle';
+                successCount++;
+            } catch (e) {
+                // Mark as error
+                itemLi.className = 'error';
+                itemLi.querySelector('.item-status').textContent = '✗ Failed';
+                itemLi.querySelector('i').className = 'fas fa-exclamation-circle';
+                errorCount++;
+                console.error(`Failed to ${action} ${itemName}:`, e);
+            }
+            
+            processedCount++;
+            
+            // Update progress
+            const progress = Math.round((processedCount / items.length) * 100);
+            operationProgressModal.progressBar.style.width = `${progress}%`;
+            operationProgressModal.progressText.textContent = `${processedCount} of ${items.length} items processed`;
+            
+            // Scroll to current item in details list
+            if (operationProgressModal.detailsList.style.display !== 'none') {
+                itemLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+        
+        // Operation complete
+        operationProgressModal.currentItem.querySelector('span').textContent = 
+            operationCancelled ? 'Cancelled' : 'Complete!';
+        
+        if (!operationCancelled) {
+            setTimeout(() => {
+                operationProgressModal.el.style.display = 'none';
+                if (successCount > 0) {
+                    showToast(`${actionTitle} complete: ${successCount} succeeded${errorCount > 0 ? `, ${errorCount} failed` : ''}`);
+                    loadFiles(currentPath);
+                }
+            }, 1500);
+        }
+    }
+
     async function compressSelected() {
         const name = await showInput('Compress Files', 'archive.zip');
         if (name && name.trim()) {
+            operationCancelled = false;
             try {
                 await apiCall('/api/compress', {
                     method: 'POST',
@@ -667,7 +929,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 showToast('Files compressed successfully.');
                 loadFiles(currentPath);
-            } catch (e) { /* apiCall shows toast */ }
+            } catch (e) { 
+                if (!operationCancelled) {
+                    showToast(`Error compressing files: ${e.message}`, 'error');
+                }
+            }
         }
     }
 
@@ -843,6 +1109,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
+    // Operation Progress Modal Event Listeners
+    operationProgressModal.closeBtn.addEventListener('click', () => {
+        if (!operationCancelled) {
+            operationProgressModal.el.style.display = 'none';
+        }
+    });
+    
+    operationProgressModal.cancelBtn.addEventListener('click', () => {
+        operationCancelled = true;
+        operationProgressModal.cancelBtn.disabled = true;
+        operationProgressModal.cancelBtn.textContent = 'Cancelling...';
+        showToast('Cancelling operation...', 'warning');
+    });
+    
+    operationProgressModal.detailsToggle.addEventListener('click', () => {
+        const isExpanded = operationProgressModal.detailsList.style.display !== 'none';
+        if (isExpanded) {
+            operationProgressModal.detailsList.style.display = 'none';
+            operationProgressModal.detailsToggle.classList.remove('expanded');
+            operationProgressModal.detailsToggle.innerHTML = '<i class="fas fa-chevron-down"></i> Show Details';
+        } else {
+            operationProgressModal.detailsList.style.display = 'block';
+            operationProgressModal.detailsToggle.classList.add('expanded');
+            operationProgressModal.detailsToggle.innerHTML = '<i class="fas fa-chevron-up"></i> Hide Details';
+        }
+    });
+    
     editorModal.closeBtn.addEventListener('click', closeEditor);
     btnDeleteSelected.addEventListener('click', deleteSelected);
     btnMoveSelected.addEventListener('click', () => openMoveCopyModal('move'));
@@ -891,7 +1184,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
     previewPanel.closeBtn.addEventListener('click', hidePreviewPanel);
 
-    // Drag and Drop
+    // Invert Selection
+    btnInvertSelection.addEventListener('click', () => {
+        const allItemPaths = Array.from(document.querySelectorAll('.file-item-checkbox')).map(cb => cb.dataset.path);
+        allItemPaths.forEach(path => {
+            if (selectedItems.has(path)) {
+                selectedItems.delete(path);
+            } else {
+                selectedItems.add(path);
+            }
+        });
+        updateSelectionUI();
+        showToast(`${selectedItems.size} items selected`);
+    });
+
+    // Editor Line Wrap Toggle
+    if (editorLineWrapToggle) {
+        editorLineWrapToggle.addEventListener('click', () => {
+            if (codeEditor) {
+                const currentWrap = codeEditor.getOption('lineWrapping');
+                codeEditor.setOption('lineWrapping', !currentWrap);
+                editorLineWrapToggle.classList.toggle('active');
+                showToast(`Line wrap ${!currentWrap ? 'enabled' : 'disabled'}`);
+            }
+        });
+    }
+
+    // Editor Find Toggle
+    if (editorFindToggle) {
+        editorFindToggle.addEventListener('click', () => {
+            if (codeEditor) {
+                CodeMirror.commands.findPersistent(codeEditor);
+            }
+        });
+    }
+
+    // Drag and Drop with Folder Support
     let dragCounter = 0;
     document.body.addEventListener('dragenter', (e) => {
         e.preventDefault();
@@ -911,26 +1239,136 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         e.stopPropagation();
     });
-    document.body.addEventListener('drop', (e) => {
+    document.body.addEventListener('drop', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         dragCounter = 0;
         dragOverlay.classList.remove('visible');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            uploadFiles(files);
+
+        const items = e.dataTransfer.items;
+        if (items && items.length > 0) {
+            const filesToUpload = [];
+
+            // Process all dropped items (files and folders)
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i].webkitGetAsEntry();
+                if (item) {
+                    await traverseFileTree(item, '', filesToUpload);
+                }
+            }
+
+            if (filesToUpload.length > 0) {
+                uploadFilesWithPaths(filesToUpload);
+            }
+        } else {
+            // Fallback for older browsers
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                uploadFiles(files);
+            }
         }
     });
+
+    // Traverse file tree recursively to support folder uploads
+    async function traverseFileTree(item, path, fileList) {
+        if (item.isFile) {
+            return new Promise((resolve) => {
+                item.file((file) => {
+                    fileList.push({ file: file, path: path });
+                    resolve();
+                });
+            });
+        } else if (item.isDirectory) {
+            const dirReader = item.createReader();
+            return new Promise((resolve) => {
+                dirReader.readEntries(async (entries) => {
+                    for (let i = 0; i < entries.length; i++) {
+                        await traverseFileTree(entries[i], path + item.name + '/', fileList);
+                    }
+                    resolve();
+                });
+            });
+        }
+    }
+
+    async function uploadFilesWithPaths(filesWithPaths) {
+        const totalFiles = filesWithPaths.length;
+        let successCount = 0;
+        let errorCount = 0;
+
+        // Show progress modal
+        uploadProgressModal.el.style.display = 'flex';
+        uploadProgressModal.bar.style.width = '0%';
+        uploadProgressModal.text.textContent = `0 of ${totalFiles} files uploaded`;
+
+        for (let i = 0; i < filesWithPaths.length; i++) {
+            const { file, path } = filesWithPaths[i];
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', currentPath);
+            formData.append('relative_path', path);
+
+            try {
+                await apiCall('/api/upload', { method: 'POST', body: formData });
+                successCount++;
+            } catch (e) {
+                errorCount++;
+                console.error(`Failed to upload ${path}${file.name}:`, e);
+            }
+
+            // Update progress
+            const progress = Math.round(((i + 1) / totalFiles) * 100);
+            uploadProgressModal.bar.style.width = `${progress}%`;
+            uploadProgressModal.text.textContent = `${i + 1} of ${totalFiles} files uploaded`;
+        }
+
+        // Hide progress modal
+        uploadProgressModal.el.style.display = 'none';
+
+        if (successCount > 0) {
+            showToast(`Successfully uploaded ${successCount} file(s).${errorCount > 0 ? ` ${errorCount} failed.` : ''}`);
+            loadFiles(currentPath);
+        } else if (errorCount > 0) {
+            showToast(`Failed to upload ${errorCount} file(s).`, 'error');
+        }
+    }
 
     // Keyboard Shortcuts
     document.addEventListener('keydown', (e) => {
         const activeEl = document.activeElement;
+
+        // Handle Ctrl+S in editor
+        if (codeEditor && codeEditor.hasFocus() && e.ctrlKey && e.key === 's') {
+            e.preventDefault();
+            saveEditorChanges();
+            return;
+        }
+
         if (['INPUT', 'TEXTAREA'].includes(activeEl.tagName) || (codeEditor && codeEditor.hasFocus())) {
             return;
         }
 
         const visibleItems = Array.from(fileListEl.querySelectorAll('.file-item'));
-        if (e.key === 'ArrowDown') {
+
+        // Ctrl+A - Select All
+        if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+            e.preventDefault();
+            isMultiSelectMode = true;
+            const allItemPaths = Array.from(document.querySelectorAll('.file-item-checkbox')).map(cb => cb.dataset.path);
+            allItemPaths.forEach(path => selectedItems.add(path));
+            updateSelectionUI();
+            showToast(`${selectedItems.size} items selected`);
+        }
+        // Escape - Deselect All
+        else if (e.key === 'Escape') {
+            if (selectedItems.size > 0) {
+                e.preventDefault();
+                selectedItems.clear();
+                updateSelectionUI();
+                showToast('Selection cleared');
+            }
+        }
+        else if (e.key === 'ArrowDown') {
             e.preventDefault();
             focusedItemIndex = Math.min(focusedItemIndex + 1, visibleItems.length - 1);
             updateFocus();

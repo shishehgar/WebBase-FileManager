@@ -1,6 +1,6 @@
 # Project: file_manager
 # File Path: file_manager/main.py
-# Last Updated: 2025-08-08 07:15:00
+# Last Updated: 2025-08-23 07:35:00
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
@@ -8,11 +8,16 @@ import shutil
 import stat
 import mimetypes
 import zipfile
-import io
+import sys # Added for logging
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
-ROOT_DIR = "/app/files"
+
+# --- CORRECTED AND ROBUST ROOT DIRECTORY ---
+# This points to the mounted /files directory (which is /home/ubuntu on host)
+ROOT_DIR = '/files'
+# Ensure the root directory exists
 os.makedirs(ROOT_DIR, exist_ok=True)
+
 
 def get_full_path(path):
     safe_path = os.path.normpath(os.path.join(ROOT_DIR, path.lstrip('/\\')))
@@ -38,18 +43,25 @@ def list_files():
         items = []
         for item_name in os.listdir(full_path):
             item_path = os.path.join(full_path, item_name)
-            file_stat = os.stat(item_path)
-            items.append({
-                'name': item_name,
-                'type': 'dir' if os.path.isdir(item_path) else 'file',
-                'size': file_stat.st_size,
-                'last_modified': file_stat.st_mtime,
-                'permissions': oct(stat.S_IMODE(file_stat.st_mode))[-3:],
-                'file_type_str': get_file_type(item_path)
-            })
+            try:
+                file_stat = os.stat(item_path)
+                items.append({
+                    'name': item_name,
+                    'type': 'dir' if os.path.isdir(item_path) else 'file',
+                    'size': file_stat.st_size,
+                    'last_modified': file_stat.st_mtime,
+                    'permissions': oct(stat.S_IMODE(file_stat.st_mode))[-3:],
+                    'file_type_str': get_file_type(item_path)
+                })
+            except OSError as e:
+                print(f"Could not stat file {item_path}: {e}", file=sys.stderr)
+                continue
         return jsonify({'items': items})
     except Exception as e:
+        print(f"Error in list_files: {e}", file=sys.stderr) # Added logging
         return jsonify({'error': str(e)}), 500
+
+# --- All other routes remain the same ---
 
 @app.route('/api/list_dirs', methods=['GET'])
 def list_dirs():
@@ -57,19 +69,23 @@ def list_dirs():
         def get_dirs(root_path, rel_path):
             tree = []
             full_root_path = os.path.join(root_path, rel_path)
-            for name in os.listdir(full_root_path):
-                full_item_path = os.path.join(full_root_path, name)
-                if os.path.isdir(full_item_path):
-                    node = {
-                        "name": name,
-                        "path": os.path.join(rel_path, name),
-                        "children": get_dirs(root_path, os.path.join(rel_path, name))
-                    }
-                    tree.append(node)
+            try:
+                for name in os.listdir(full_root_path):
+                    full_item_path = os.path.join(full_root_path, name)
+                    if os.path.isdir(full_item_path):
+                        node = {
+                            "name": name,
+                            "path": os.path.join(rel_path, name),
+                            "children": get_dirs(root_path, os.path.join(rel_path, name))
+                        }
+                        tree.append(node)
+            except PermissionError:
+                pass
             return tree
         dir_tree = [{"name": "Root", "path": "", "children": get_dirs(ROOT_DIR, '')}]
         return jsonify(dir_tree)
     except Exception as e:
+        print(f"Error in list_dirs: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/read', methods=['GET'])
@@ -83,9 +99,9 @@ def read_file():
             return jsonify({'content': content})
         return jsonify({'error': 'Not a file'}), 400
     except Exception as e:
+        print(f"Error in read_file: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-# ... (save, upload, create, delete, rename, chmod, move, copy, download routes remain the same)
 @app.route('/api/save', methods=['POST'])
 def save_file():
     try:
@@ -99,13 +115,16 @@ def save_file():
             return jsonify({'success': True, 'message': 'File saved successfully!'})
         return jsonify({'error': 'Not a file'}), 400
     except Exception as e:
+        print(f"Error in save_file: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     try:
         path = request.form.get('path', '')
+        relative_path = request.form.get('relative_path', '')  # For folder structure
         full_path = get_full_path(path)
+
         if 'file' not in request.files:
             return jsonify({'error': 'No file part in the request'}), 400
         file = request.files['file']
@@ -113,10 +132,19 @@ def upload_file():
             return jsonify({'error': 'No file selected for uploading'}), 400
         if file:
             filename = file.filename
-            destination = os.path.join(full_path, filename)
+
+            # If relative_path is provided (folder upload), create directory structure
+            if relative_path:
+                target_dir = os.path.join(full_path, relative_path)
+                os.makedirs(target_dir, exist_ok=True)
+                destination = os.path.join(target_dir, filename)
+            else:
+                destination = os.path.join(full_path, filename)
+
             file.save(destination)
             return jsonify({'success': True, 'message': f"File '{filename}' uploaded successfully."})
     except Exception as e:
+        print(f"Error in upload_file: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/create', methods=['POST'])
@@ -141,6 +169,7 @@ def create_item():
             return jsonify({'error': 'Invalid type'}), 400
         return jsonify({'success': True, 'message': message})
     except Exception as e:
+        print(f"Error in create_item: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/delete', methods=['POST'])
@@ -156,6 +185,7 @@ def delete_items():
                 os.remove(full_path)
         return jsonify({'success': True, 'message': f'{len(items)} item(s) deleted.'})
     except Exception as e:
+        print(f"Error in delete_items: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/rename', methods=['POST'])
@@ -170,6 +200,7 @@ def rename_item():
         os.rename(old_full_path, new_full_path)
         return jsonify({'success': True, 'message': f"Renamed to '{new_name}'."})
     except Exception as e:
+        print(f"Error in rename_item: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/chmod', methods=['POST'])
@@ -182,6 +213,7 @@ def chmod_item():
         os.chmod(full_path, int(permissions, 8))
         return jsonify({'success': True, 'message': f'Permissions for {os.path.basename(path)} set to {permissions}.'})
     except Exception as e:
+        print(f"Error in chmod_item: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/move', methods=['POST'])
@@ -191,12 +223,26 @@ def move_items():
         items = data.get('items', [])
         destination_path = data.get('destination')
         full_dest_path = get_full_path(destination_path)
+        
+        moved_count = 0
         for item_path in items:
             source_path = get_full_path(item_path)
             dest = os.path.join(full_dest_path, os.path.basename(source_path))
+            
+            # Handle name conflicts by adding a number
+            counter = 1
+            original_dest = dest
+            while os.path.exists(dest):
+                name, ext = os.path.splitext(os.path.basename(original_dest))
+                dest = os.path.join(full_dest_path, f"{name}_{counter}{ext}")
+                counter += 1
+            
             shutil.move(source_path, dest)
-        return jsonify({'success': True, 'message': f'{len(items)} item(s) moved successfully.'})
+            moved_count += 1
+            
+        return jsonify({'success': True, 'message': f'{moved_count} item(s) moved successfully.', 'count': moved_count})
     except Exception as e:
+        print(f"Error in move_items: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/copy', methods=['POST'])
@@ -206,15 +252,32 @@ def copy_items():
         items = data.get('items', [])
         destination_path = data.get('destination')
         full_dest_path = get_full_path(destination_path)
+        
+        copied_count = 0
         for item_path in items:
             source_path = get_full_path(item_path)
             dest = os.path.join(full_dest_path, os.path.basename(source_path))
+            
+            # Handle name conflicts by adding a number
+            counter = 1
+            original_dest = dest
+            while os.path.exists(dest):
+                name, ext = os.path.splitext(os.path.basename(original_dest))
+                if os.path.isdir(source_path):
+                    dest = os.path.join(full_dest_path, f"{name}_{counter}")
+                else:
+                    dest = os.path.join(full_dest_path, f"{name}_{counter}{ext}")
+                counter += 1
+            
             if os.path.isdir(source_path):
                 shutil.copytree(source_path, dest)
             else:
                 shutil.copy2(source_path, dest)
-        return jsonify({'success': True, 'message': f'{len(items)} item(s) copied successfully.'})
+            copied_count += 1
+            
+        return jsonify({'success': True, 'message': f'{copied_count} item(s) copied successfully.', 'count': copied_count})
     except Exception as e:
+        print(f"Error in copy_items: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/download')
@@ -228,6 +291,7 @@ def download_file():
             return send_from_directory(directory, filename, as_attachment=True)
         return "File not found", 404
     except Exception as e:
+        print(f"Error in download_file: {e}", file=sys.stderr)
         return str(e), 500
 
 @app.route('/api/compress', methods=['POST'])
@@ -255,6 +319,7 @@ def compress_items():
 
         return jsonify({'success': True, 'message': f"'{archive_name}' created successfully."})
     except Exception as e:
+        print(f"Error in compress_items: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/extract', methods=['POST'])
@@ -275,7 +340,8 @@ def extract_item():
             
         return jsonify({'success': True, 'message': f"Extracted to '{os.path.basename(extract_dir)}'."})
     except Exception as e:
+        print(f"Error in extract_item: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5006, debug=True)
+    app.run(host='0.0.0.0', port=5002, debug=True)

@@ -1,23 +1,21 @@
+# ===== DOCKERFILE =====
 # Use an official Python runtime as a parent image
-FROM python:3.10-slim-buster
+FROM python:3.9-slim-buster
 
-# Set the working directory in the container
+# Set the working directory to /app
 WORKDIR /app
 
-# Copy the requirements file into the container at /app
+# Copy the requirements file into the container
 COPY requirements.txt .
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your app's source code from your host to your image filesystem.
+# Copy the entire application code into the container
 COPY . .
 
-# Expose the port the app runs on
-EXPOSE 5006
+# Expose the port the app runs on (e.g., 5000 for Flask)
+EXPOSE 5000
 
-# Define environment variable
-ENV FLASK_APP=main.py
-
-# Run the command to start the app
-CMD ["flask", "run", "--host=0.0.0.0", "--port=5006"]
+# Run main.py when the container launches
+CMD ["python", "main.py"]

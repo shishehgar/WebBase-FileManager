@@ -82,10 +82,57 @@
     <!-- Floating Action Bar -->
     <div id="floating-action-bar" class="floating-action-bar">
         <span id="selection-count"></span>
+        <button id="btn-invert-selection" title="Invert Selection"><i class="fas fa-exchange-alt"></i> Invert</button>
         <button id="btn-compress-selected" title="Compress Selected"><i class="fas fa-file-archive"></i> Compress</button>
         <button id="btn-copy-selected" title="Copy Selected"><i class="fas fa-copy"></i> Copy</button>
         <button id="btn-move-selected" title="Move Selected"><i class="fas fa-arrow-right-to-bracket"></i> Move</button>
         <button id="btn-delete-selected" class="danger" title="Delete Selected"><i class="fas fa-trash"></i> Delete</button>
+    </div>
+
+    <!-- Upload Progress Modal -->
+    <div id="upload-progress-modal" class="modal" style="display: none;">
+        <div class="modal-content small">
+            <div class="modal-header"><h2>Uploading Files...</h2></div>
+            <div class="modal-body">
+                <div class="progress-container">
+                    <div class="progress-bar" id="upload-progress-bar" style="width: 0%;"></div>
+                </div>
+                <p id="upload-progress-text">0 of 0 files uploaded</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Operation Progress Modal -->
+    <div id="operation-progress-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="operation-modal-title">Processing...</h2>
+                <span class="close-button" id="operation-modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="operation-summary">
+                    <p><strong>From:</strong> <span id="operation-source-folder"></span></p>
+                    <p><strong>To:</strong> <span id="operation-target-folder"></span></p>
+                    <p><strong>Items:</strong> <span id="operation-item-count"></span></p>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar" id="operation-progress-bar" style="width: 0%;"></div>
+                </div>
+                <p id="operation-progress-text">Processing...</p>
+                <p id="operation-current-item">Current: <span></span></p>
+                
+                <button id="operation-details-toggle" class="btn btn-secondary btn-sm" style="margin-top: 10px;">
+                    <i class="fas fa-chevron-down"></i> Show Details
+                </button>
+                
+                <div id="operation-details-list" class="operation-details" style="display: none;">
+                    <ul id="operation-items-list"></ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="operation-cancel-btn" class="btn btn-danger">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <!-- Modals -->
@@ -102,7 +149,10 @@
     <div id="input-modal" class="modal">
         <div class="modal-content small">
             <div class="modal-header"><h2 id="input-modal-title">Enter Name</h2><span class="close-button" id="input-modal-close">&times;</span></div>
-            <div class="modal-body"><input type="text" id="input-modal-text" class="modal-input"></div>
+            <div class="modal-body">
+                <input type="text" id="input-modal-text" class="modal-input">
+                <p class="key-hint">Press Enter to confirm</p>
+            </div>
             <div class="modal-footer">
                 <button id="input-modal-cancel" class="btn btn-secondary">Cancel</button>
                 <button id="input-modal-ok" class="btn btn-primary">OK</button>
@@ -116,10 +166,30 @@
     </div>
     <div id="editor-modal" class="modal">
         <div class="modal-content wide">
-            <div class="modal-header"><h2 id="editor-modal-title">Edit File</h2><span class="close-button" id="editor-modal-close">&times;</span></div>
-            <div class="modal-body"><textarea id="editor-modal-textarea"></textarea></div>
+            <div class="modal-header">
+                <h2 id="editor-modal-title">Edit File</h2>
+                <div class="editor-controls">
+                    <button id="editor-line-wrap-toggle" class="btn btn-sm" title="Toggle Line Wrap">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <button id="editor-find-toggle" class="btn btn-sm" title="Find/Replace (Ctrl+F)">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+                <span class="close-button" id="editor-modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <textarea id="editor-modal-textarea"></textarea>
+            </div>
             <div class="modal-footer">
-                <button id="editor-modal-save" class="btn btn-primary">Save Changes</button>
+                <div class="editor-info">
+                    <span id="editor-file-size">Size: 0 KB</span>
+                    <span id="editor-line-count">Lines: 0</span>
+                </div>
+                <div class="editor-actions">
+                    <button id="editor-modal-save" class="btn btn-primary">Save Changes</button>
+                    <button id="editor-modal-save-close" class="btn btn-success"><i class="fas fa-save"></i> Save & Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -129,6 +199,7 @@
             <div class="modal-body">
                 <p>Enter new permissions in octal format (e.g., 755).</p>
                 <input type="text" id="permissions-modal-input" class="modal-input" maxlength="3" pattern="[0-7]{3}">
+                <p class="key-hint">Press Enter to confirm</p>
             </div>
             <div class="modal-footer">
                 <button id="permissions-modal-cancel" class="btn btn-secondary">Cancel</button>
@@ -202,8 +273,12 @@
     <!-- External Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/mode/meta.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/addon/search/searchcursor.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/addon/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/addon/dialog/dialog.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/addon/dialog/dialog.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
-    
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
