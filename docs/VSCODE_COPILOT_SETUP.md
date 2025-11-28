@@ -155,6 +155,52 @@ You can enable or disable Copilot for specific file types:
 }
 ```
 
+### Coding-Only Configuration (Disable for Non-Code Files)
+
+If you want Copilot to assist **only when writing code** and not in other files like markdown, plaintext, or configuration files, use this configuration:
+
+```json
+{
+  "github.copilot.enable": {
+    "*": false,
+    "python": true,
+    "javascript": true,
+    "typescript": true,
+    "java": true,
+    "c": true,
+    "cpp": true,
+    "csharp": true,
+    "go": true,
+    "rust": true,
+    "php": true,
+    "ruby": true,
+    "swift": true,
+    "kotlin": true,
+    "html": true,
+    "css": true,
+    "scss": true,
+    "sql": true,
+    "shellscript": true,
+    "plaintext": false,
+    "markdown": false,
+    "yaml": false,
+    "json": false,
+    "xml": false,
+    "scminput": false
+  },
+  "github.copilot.inlineSuggest.enable": true,
+  "editor.inlineSuggest.enabled": true
+}
+```
+
+**How to apply:**
+1. Open Settings (`Ctrl+,`)
+2. Click the "Open Settings (JSON)" icon in the top-right corner
+3. Add or merge the above configuration into your `settings.json`
+4. Save the file
+
+This ensures Copilot only provides suggestions in programming language files.
+
 ---
 
 ## Step 6: Using GitHub Copilot
