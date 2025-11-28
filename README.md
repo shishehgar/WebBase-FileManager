@@ -143,6 +143,13 @@ Enjoy using your professional file manager\! 🚀
 -----
 ![main page](102.png)
 
+-----
+
+### 📚 Additional Documentation
+
+- **[Setting Up GitHub Copilot in VS Code Server](docs/VSCODE_COPILOT_SETUP.md)** - Step-by-step guide for configuring GitHub Copilot in VS Code Server for AI-assisted coding.
+
+-----
 
 
 # مدیر فایل تحت وب
