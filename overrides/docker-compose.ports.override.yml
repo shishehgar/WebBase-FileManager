@@ -1,0 +1,5 @@
+services:
+  # Optional port remaps to avoid collisions:
+  # some_service:
+  #   ports:
+  #     - "NEW_HOST_PORT:CONTAINER_PORT"

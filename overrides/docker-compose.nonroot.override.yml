@@ -1,0 +1,4 @@
+services:
+  # Apply non-root only where safe:
+  # some_service:
+  #   user: "${PUID}:${PGID}"

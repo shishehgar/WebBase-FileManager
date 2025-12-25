@@ -1,0 +1,4 @@
+services:
+  # Optional profiles:
+  # some_service:
+  #   profiles: ["app"]
