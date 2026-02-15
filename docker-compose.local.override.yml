@@ -1,0 +1,10 @@
+# Local/project override scaffold.
+# Put per-project adjustments here so upstream/base compose stays clean.
+# Examples:
+# - extra env
+# - ports
+# - bind mounts
+# - user overrides (if compatible)
+#
+# version is intentionally omitted for Compose v2
+services: {}

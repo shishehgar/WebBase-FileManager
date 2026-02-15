@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="/home/ubuntu/my_services"
-PROJ_DIR="/home/ubuntu/my_services/filemanager_project"
+PROJ_DIR="/home/ubuntu/my_services/projects/filemanager_project"
 PROJ_NAME="filemanager_project"
 
 cd "$PROJ_DIR"
